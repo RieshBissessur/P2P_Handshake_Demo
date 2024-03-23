@@ -1,4 +1,6 @@
 use sha2::{Sha256, Digest};
+use tokio::net::TcpStream;
+use rand::{Rng, thread_rng};
 
 pub fn get_u64_from_byte_array(data: &mut [u8]) -> Result<u64, &'static str> {
     if data.len() < 8 {
@@ -34,4 +36,16 @@ pub fn calculate_checksum(data_buffer: &[u8]) -> [u8; 4] {
   let mut buf = [0u8; 4];
   buf.clone_from_slice(&second_hash[..4]);
   return buf
+}
+
+pub async fn tcp_handshake(ip: &str, port: u16)->Result<TcpStream, std::io::Error>{
+  match TcpStream::connect((ip, port)).await{
+    Ok(tcp) => return Ok(tcp),
+    Err(err) => return Err(err),
+  };
+}
+
+pub fn generate_nonce() -> u64 {
+  let mut rng = thread_rng(); // random gen
+  rng.gen::<u64>()
 }

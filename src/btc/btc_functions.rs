@@ -7,7 +7,6 @@ use tokio::net::TcpStream;
 use std::str;
 use crate::utils::helper_functions::*;
 
-
 /// Message Structure
 /// size  | field       | type      | description
 /// ---   | -----       | ----      | ------------
@@ -44,13 +43,6 @@ use crate::utils::helper_functions::*;
 pub const MAGIC_VALUE: [u8; 4] = [0xF9, 0xBE, 0xB4, 0xD9]; // Mainnet magic value
 pub const VERSION_CMD: [u8; 12] = *b"version\0\0\0\0\0";
 pub const VERACK_CMD: [u8; 12] = *b"verack\0\0\0\0\0\0";
-
-pub async fn tcp_handshake(ip: &str)->Result<TcpStream, std::io::Error>{
-  match TcpStream::connect((ip, 8333)).await{
-    Ok(tcp) => return Ok(tcp),
-    Err(err) => return Err(err),
-  };
-}
 
 pub async fn send_version_message(stream: &mut TcpStream, version: u32, nonce: u64, start_height: u32) -> Result<(), std::io::Error> {
 

@@ -1,3 +1,5 @@
 /target/
 /logs/
 Cargo.lock
+.DS_Store
+.vscode/
