@@ -1,4 +1,4 @@
-use std::io::ErrorKind;
+use std::io::{self, ErrorKind};
 use std::net::SocketAddr;
 use std::ops::BitAnd;
 use std::time::UNIX_EPOCH;
@@ -45,7 +45,6 @@ pub const VERSION_CMD: [u8; 12] = *b"version\0\0\0\0\0";
 pub const VERACK_CMD: [u8; 12] = *b"verack\0\0\0\0\0\0";
 
 pub async fn send_version_message(stream: &mut TcpStream, version: u32, nonce: u64, start_height: u32) -> Result<(), std::io::Error> {
-
   // Add node version to payload
   let mut version_payload: Vec<u8> = vec![];
   version_payload.extend_from_slice(&version.to_le_bytes());
@@ -141,22 +140,21 @@ pub async fn receive_version_message(stream: &mut TcpStream, nonce_sent: u64) ->
       Ok(received_bytes) => received_bytes,
       Err(err) => return Err(std::io::Error::new(ErrorKind::Other, format!("Unable to recieve bytes: {}", err))),
   };
+  
+  let (_, mut payload) = match handle_message_payload(received_bytes) {
+    Ok(received_bytes) => received_bytes,
+    Err(err) => return Err(std::io::Error::new(ErrorKind::Other, format!("Unable to recieve bytes: {}", err))),
+  };
 
-  // Remove command header from payload
-  let mut command_bytes = received_bytes.to_vec();
-  if command_bytes.len() > 20{
-    command_bytes.drain(..20);
-  }
-
-  let version = match get_u32_from_byte_array(&mut command_bytes){
+  let version = match get_u32_from_byte_array(&mut payload){
     Ok(version) => version,
     Err(_) => return Err(std::io::Error::new(ErrorKind::Other, "Invalid version")),
-};
+  };
 
-  println!("Version: {:?}", version);
-  command_bytes.drain(..68);
+  println!("Version recieved: {:?}", version);
+  payload.drain(..68);
 
-  let nonce = match get_u64_from_byte_array(&mut command_bytes){
+  let nonce = match get_u64_from_byte_array(&mut payload){
     Ok(nonce) => nonce,
     Err(_) => return Err(std::io::Error::new(ErrorKind::Other, "Invalid Nonce")),
   };
@@ -165,8 +163,8 @@ pub async fn receive_version_message(stream: &mut TcpStream, nonce_sent: u64) ->
       return Err(std::io::Error::new(ErrorKind::Other, "Nonce is the same"));
   }
 
-  if command_bytes.len() > 16{
-    command_bytes.drain(..16);
+  if payload.len() > 16{
+    payload.drain(..16);
   }
   
   Ok(version)
@@ -198,27 +196,58 @@ pub async fn receive_verack_message(stream: &mut TcpStream) -> Result<String, st
   };
 
   // Remove message header from payload
+  let (command_str, _) = match handle_message_payload(received_bytes) {
+    Ok(received_bytes) => received_bytes,
+    Err(err) => return Err(std::io::Error::new(ErrorKind::Other, format!("Unable to recieve bytes: {}", err))),
+  };
+  
+  return Ok(command_str);
+}
+
+fn handle_message_payload(received_bytes: &[u8])-> Result<(String, Vec<u8>), io::Error>{
   let mut command_bytes = received_bytes.to_vec();
-
-  if command_bytes.len() > 8{
-    command_bytes.drain(..8);
-  }
-
+  let _magic = match get_u32_from_byte_array(&mut command_bytes){
+    Ok(version) => version,
+    Err(_) => return Err(std::io::Error::new(ErrorKind::Other, "Invalid magic bytes")),
+  };
+  
   let mut command: [u8; 12] = [0; 12];
   if command_bytes.len() > 12 {
     command.copy_from_slice(&command_bytes[..12]);
   }
+  
+  command_bytes.drain(..12);
 
   let command_str = match str::from_utf8(&command).map(|s| s.to_owned()){
     Ok(command_str) => command_str,
     Err(_) => return Err(std::io::Error::new(ErrorKind::Other, "Unable to parse command string")),
   };
 
-  println!("Command: {:?}", command_str);
-  if !command_str.contains("cmpct") {
-      return Err(std::io::Error::new(ErrorKind::Other, "Incorrect command string"));
-  }
-  
-  return Ok(command_str);
-}
+  println!("Command in payload recieved: {}", command_str);
 
+  let length = match get_u32_from_byte_array(&mut command_bytes){
+    Ok(version) => version,
+    Err(_) => return Err(std::io::Error::new(ErrorKind::Other, "Invalid payload length in header")),
+  };
+
+  if (command_bytes.len() as u32) < length {
+    return Err(std::io::Error::new(ErrorKind::Other, "Invalid payload length"))
+  }
+
+  let checksum = match get_u32_from_byte_array(&mut command_bytes){
+    Ok(version) => version,
+    Err(_) => return Err(std::io::Error::new(ErrorKind::Other, "Invalid checksum")),
+  };
+
+  // Remove payload from message
+  let mut payload = Vec::with_capacity(length as usize);
+  payload.extend_from_slice(&command_bytes[0..length as usize]);
+
+  // Ensure checksum for paylaod is correct
+  let checksum_bytes = calculate_checksum(&payload);
+  if checksum.to_le_bytes() !=  checksum_bytes{
+    return Err(std::io::Error::new(ErrorKind::Other, "Invalid Checksum"))      
+  }
+
+  return Ok((command_str, payload));
+}

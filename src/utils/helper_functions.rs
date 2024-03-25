@@ -19,10 +19,10 @@ pub fn get_u32_from_byte_array(data: &mut [u8]) -> Result<u32, &'static str> {
       return Err("Byte array size must be at least 4");
     }
 
-    data.copy_within(4..data.len(), 0);
     let mut number: [u8; 4] = [0; 4];
     number.copy_from_slice(&data[..4]);
     let value = u32::from_le_bytes(number);
+    data.copy_within(4..data.len(), 0);
     return Ok(value)
 }
 
@@ -38,8 +38,8 @@ pub fn calculate_checksum(data_buffer: &[u8]) -> [u8; 4] {
   return buf
 }
 
-pub async fn tcp_handshake(ip: &str, port: u16)->Result<TcpStream, std::io::Error>{
-  match TcpStream::connect((ip, port)).await{
+pub async fn tcp_handshake(ip: &str)->Result<TcpStream, std::io::Error>{
+  match TcpStream::connect(ip).await{
     Ok(tcp) => return Ok(tcp),
     Err(err) => return Err(err),
   };
